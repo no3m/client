@@ -21,6 +21,7 @@ RadioWindow::RadioWindow(QStringList args, QWidget *parent) : QWidget(parent)
   GraphicsScene = nullptr;
   //GraphicsEllipse = nullptr;
   GraphicsPixmap = nullptr;
+  NightGraphicsPixmap = nullptr;
   GraphicsLegend = nullptr;
   webSocket = nullptr;
   m_timer = nullptr;
@@ -49,11 +50,16 @@ RadioWindow::RadioWindow(QStringList args, QWidget *parent) : QWidget(parent)
   //qDebug() << radioNr;
   settings = new QSettings("softrx-client", "settings"+radioNrStr);
   settingsdialog = new SettingsDialog(*settings, this);
+  for (int i=50; i<=150; i+=10) {
+    settingsdialog->cbNightTransparency->addItem(QString::number(i));
+  }
+  settingsdialog->cbNightTransparency->setCurrentIndex(settings->
+                value(s_nighttransparency,s_nighttransparency_def).toInt());
+  settingsdialog->cbNightTransparency->setMaxVisibleItems(8);
   settingsdialog->hide();
 
   restoreGeometry(settings->value("geometry").toByteArray());
   mapZoom = settings->value(s_mapZoom, s_mapZoom_def).toInt();
-  //loadMaps();
 
   defaultPalette = qApp->palette();
   setPalette();
@@ -75,7 +81,23 @@ RadioWindow::RadioWindow(QStringList args, QWidget *parent) : QWidget(parent)
   // kDispCompass
   createGraphicsView();
   createGraphicsLegend();
-  updateGraphicsPixmap();
+
+  mapThread = new QThread;
+  mapHandler = new MapClass(*settings, kMapWidth, kMapHeight);
+  qRegisterMetaType<QList<QPixmap> >("QList<QPixmap>");
+  connect(mapHandler, &MapClass::nightMapsReady,
+    this, &RadioWindow::loadNightMaps);
+  connect(mapHandler, &MapClass::mapsReady,
+    this, &RadioWindow::loadMaps);
+  mapHandler->moveToThread(mapThread);
+  mapThread->start();
+  connect(this, &RadioWindow::generateNightMaps,
+    mapHandler, &MapClass::generateNightMaps);
+  connect(this, &RadioWindow::generateMaps,
+    mapHandler, &MapClass::generateMaps);
+
+  emit generateMaps();
+
   GraphicsLines.clear();
   GraphicsText.clear();
   GraphicsEllipses.clear();
@@ -88,88 +110,26 @@ RadioWindow::RadioWindow(QStringList args, QWidget *parent) : QWidget(parent)
   m_timer = new QTimer();
   openWebSocket();
 
+  timer = new QTimer();
+  connect(timer, &QTimer::timeout, this, &RadioWindow::timerTimeout);
+  timer->start(timerPeriod);
+
   // test
-  double lat = 0.0;
-  double lng = 0.0;
-  //if (convertMaidenheadToCoordinates(QStringLiteral("en91wr"), &lat, &lng)) {
-  if (locator2longlat(&lng, &lat, QString("en91wr").toLatin1().data())) {
-    qDebug() << "Lat: " << lat << " Long: " << lng;
-  }
-
-  double dist = 0.0;
-  double azim = 0.0;
-  if (qrb(lng, lat, -0.375252, 51.453151, &dist, &azim)) {
-    qDebug() << "Distance: " << dist << " Bearing: " << azim;
-  }
-
-  std::time_t start = std::time(0);
-  QImage rectMap("/home/eric/.xplanet/images/6_earth_blue-water_boundaries.png");
-  //QImage rectMap("/home/eric/.xplanet/images/6_earth_blue-water_boundaries-16k.png");
-  //QImage rectMap("/home/eric/.xplanet/images/4_no_ice_clouds_mts_boundaries_4k.jpg");
-  QImage azimuthalMap(2048,2048,QImage::Format_ARGB32);
-
-  double latRad = lat * M_PI / 180.0;
-  double lngRad = lng * M_PI / 180.0;
-  for (int x =0; x < azimuthalMap.width(); ++x) {
-    for (int y=0; y < azimuthalMap.height(); ++y) {
-      double distance;
-      double bearing;
-      if (pixelAz2DistAz(x,y,
-                         azimuthalMap.width(),20000.0,
-                         distance, bearing)) {
-
-        double longitude;
-        double latitude;
-        if (distAz2LongLat(distance, bearing,
-                           lngRad, latRad,
-                           longitude, latitude)) {
-
-          int rectX;
-          int rectY;
-          if (longlat2PixelRect(longitude, latitude,
-                                rectMap.width(), rectMap.height(),
-                                rectX, rectY)) {
-
-            azimuthalMap.setPixelColor(x, y, rectMap.pixelColor(rectX, rectY));
-          }
-        }
-      }
-    }
-  }
-  //azimuthalMap.save("/home/eric/.config/softrx-client/azimuthal-eq.png");
-  int steps = sqrt(azimuthalMap.width() - kMapWidth) / 2;
-  for (int i=steps; i>0; --i) {
-    QImage image(azimuthalMap.scaled(
-                 kMapWidth + i * i * 2,
-                 kMapHeight + i * i * 2,
-                 Qt::KeepAspectRatio,
-                 Qt::SmoothTransformation
-               ));
-    image = image.copy(QRect(image.width()/2 - kMapWidth/2,
-                             image.height()/2 - kMapHeight/2,
-                             kMapWidth,
-                             kMapHeight) );
-    //image.save(QString("/home/eric/.config/softrx-client/azimuthal-eq%1.png").arg(i));
-    QImage clipped(kMapWidth,kMapHeight,QImage::Format_ARGB32);
-    clipped.fill(Qt::transparent);
-    QBrush brush(image);
-    QPainter p(&clipped);
-    p.setBrush(brush);
-    p.setPen(Qt::NoPen);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.drawEllipse(0,0,kMapWidth,kMapHeight);
-    p.end();
-
-    QPixmap *map = new QPixmap(QPixmap::fromImage(clipped));
-    AzMaps << map;
-  }
-  qDebug() << std::time(0) - start;
-
+  //
 }
 
 RadioWindow::~RadioWindow()
 {
 
+}
+
+void RadioWindow::timerTimeout()
+{
+  //qDebug() << "timer timeout";
+  //qDebug() << "main thread" << QThread::currentThreadId();
+  //if (settings->value(s_nightshading, s_nightshading_def).toBool()) {
+    emit generateNightMaps();
+  //}
 }
 
 void RadioWindow::setPalette()
@@ -732,9 +692,16 @@ void RadioWindow::messageReceived(const QByteArray &message)
 
 void RadioWindow::closeEvent(QCloseEvent *event)
 {
-  for (const auto &map : qAsConst(AzMaps)) {
-    delete map;
+  if (mapThread->isRunning()) {
+    mapThread->quit();
+    mapThread->wait();
   }
+  //for (const auto &map : qAsConst(AzMaps)) {
+  //  delete map;
+  //}
+  //for (const auto &map : qAsConst(nightAzMaps)) {
+  //  delete map;
+  //}
   for (const auto &Button : qAsConst(antennaButtons)) {
     if (Button.button != nullptr) {
       delete Button.button;
@@ -759,6 +726,9 @@ void RadioWindow::closeEvent(QCloseEvent *event)
   layout->deleteLater();
   GraphicsScene->deleteLater();
   GraphicsView->deleteLater();
+
+  mapHandler->deleteLater();
+  mapThread->deleteLater();
 
   settings->setValue(s_mapZoom, mapZoom);
   settings->setValue("geometry", saveGeometry());
@@ -794,8 +764,6 @@ void RadioWindow::settingsUpdated()
   QPixmapCache::clear(); // needed to update combobox, etc on palette change
   setPalette();
 
-  loadMaps();
-  updateGraphicsPixmap();
   if (webSocket->state() == QAbstractSocket::ConnectedState) {
     connectionLED(true);
   } else {
@@ -809,10 +777,33 @@ void RadioWindow::settingsUpdated()
   //qDebug() << "settingsUpdated";
 }
 
+void RadioWindow::updateMapImages()
+{
+  emit generateMaps();
+}
+
+void RadioWindow::updateNightMapImages()
+{
+  emit generateNightMaps();
+}
+
+void RadioWindow::toggleNightMapImage()
+{
+  updateNightGraphicsPixmap();
+}
+
 void RadioWindow::connectSignals()
 {
   connect(settingsdialog, &SettingsDialog::settingsUpdated,
           this, &RadioWindow::settingsUpdated);
+  connect(settingsdialog, &SettingsDialog::updateMapImages,
+          this, &RadioWindow::updateMapImages);
+  connect(settingsdialog, &SettingsDialog::toggleNightMapImage,
+          this, &RadioWindow::toggleNightMapImage);
+  connect(settingsdialog, &SettingsDialog::updateNightMapImages,
+          this, &RadioWindow::updateNightMapImages);
+  connect(settingsdialog, &SettingsDialog::webSocketReconnect,
+          this, &RadioWindow::webSocketReconnect);
 
   connect(cbBand, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
           this, &RadioWindow::cbBandChanged);
@@ -935,137 +926,6 @@ void RadioWindow::swapAntennas()
   sendData(object);
 }
 
-void RadioWindow::loadMaps()
-{
-
-  //for (const auto &map : qAsConst(AzMaps)) {
-  for (const auto &map : qAsConst(AzMaps)) {
-    delete map;
-  }
-  AzMaps.clear();
-
-  if (!settings->value(s_mapDirectory, s_mapDirectory_def).toString().isEmpty()) {
-    QCollator collator;
-    collator.setNumericMode(true);
-    QDir directory(settings->value(s_mapDirectory, s_mapDirectory_def).toString());
-    QStringList filter;
-    filter << QLatin1String("*.png"); // only png
-    directory.setNameFilters(filter);
-    directory.setSorting(QDir::NoSort);
-    QStringList filelist = directory.entryList();
-    if (filelist.count()) {
-
-      std::sort(filelist.begin(), filelist.end(), collator);
-      for (const auto& file : qAsConst(filelist)) {
-        QString imagePath = directory.absolutePath() + "/" + file;
-        //qDebug() << imagePath;
-        //QPixmap *map = new QPixmap(imagePath);
-        QPixmap *scaledMap = new QPixmap(QPixmap(imagePath).scaled(kMapWidth,
-                                                    kMapHeight,
-                                                    Qt::KeepAspectRatio,
-                                                    Qt::SmoothTransformation));
-
-        AzMaps << scaledMap;
-        //delete map;
-      }
-
-    } else { // no PNGs, try converting NS6T PDFs
-      filter.clear();
-      filter << QLatin1String("*.pdf");
-      directory.setNameFilters(filter);
-      filelist = directory.entryList();
-      if (filelist.count()) {
-        std::sort(filelist.begin(), filelist.end(), collator);
-        for (const auto& file : qAsConst(filelist)) {
-          QString filepath = directory.absolutePath() + "/" + file;
-          //qDebug() << filepath;
-#ifdef Q_OS_WIN
-          Poppler::setDebugErrorFunction(dummy_error_function, QVariant());
-          Poppler::Document* document = Poppler::Document::load(filepath);
-          if (document && !document->isLocked()) {
-            document->setRenderHint(Poppler::Document::Antialiasing);
-            document->setRenderHint(Poppler::Document::TextAntialiasing);
-            document->setRenderHint(Poppler::Document::TextHinting);
-            document->setRenderHint(Poppler::Document::TextSlightHinting);
-            //document->setRenderHint(Poppler::Document::ThinLineShape);
-            document->setRenderBackend(Poppler::Document::ArthurBackend);
-            document->setPaperColor(Qt::transparent);
-            //qDebug() << "document loaded";
-
-            QImage image = document->page(0)->renderToImage(100, 100); // 100 dpi
-#endif
-#ifdef Q_OS_LINUX
-          QPdfDocument document;
-          document.load(filepath);
-          QImage image = document.render(0, QSize(850,1100));
-#endif
-            if (!image.isNull()) {
-              //qDebug() << "QImage created h:" << image.size().height() << " w:" << image.size().width();
-              image = image.copy(QRect(34,159,782,782));
-              image = image.scaled(kMapWidth,
-                                   kMapHeight,
-                                   Qt::KeepAspectRatio,
-                                   Qt::SmoothTransformation);
-
-              image.save(filepath.replace(".pdf", ".png", Qt::CaseInsensitive)); //, "PNG", 0);
-
-              //QImage circle(780, 780, QImage::Format_ARGB32);
-              //circle.fill(Qt::transparent);
-              //QPainter pc(&circle);
-              //pc.setRenderHints( QPainter::Antialiasing );
-              //pc.setBrush( Qt::white );
-              //pc.setPen( Qt::NoPen);
-              //pc.drawEllipse(0,0,780,780);
-              //pc.end();
-              //QPainter pi(&image);
-              //pi.setCompositionMode( QPainter::CompositionMode_DestinationOver );
-              //pi.setRenderHints( QPainter::Antialiasing );
-              //pi.drawImage( QRect( 0, 0, 780, 780 ), circle );
-              //pi.end();
-
-              //QPixmap map = QPixmap::fromImage(circle);
-              /*
-              QPixmap map = QPixmap::fromImage(image);
-              QPixmap *scaledMap = new QPixmap(map.scaled(kMapWidth,
-                                                  kMapHeight,
-                                                  Qt::KeepAspectRatio,
-                                                  Qt::SmoothTransformation));
-
-              AzMaps << scaledMap;
-              */
-            }
-#ifdef Q_OS_WIN
-          }
-          delete document;
-#endif
-        }
-        filter.clear();
-        filter << QLatin1String("*.png"); // re-check for PNGs and load
-        directory.setNameFilters(filter);
-        filelist = directory.entryList();
-        if (filelist.count()) {
-
-          std::sort(filelist.begin(), filelist.end(), collator);
-          for (const auto& file : qAsConst(filelist)) {
-            QString imagePath = directory.absolutePath() + "/" + file;
-            QPixmap *scaledMap = new QPixmap(QPixmap(imagePath)
-                                              .scaled(kMapWidth,
-                                                      kMapHeight,
-                                                      Qt::KeepAspectRatio,
-                                                      Qt::SmoothTransformation));
-            AzMaps << scaledMap;
-          }
-        }
-      }
-    }
-    //qDebug() << "Images loaded: " << AzMaps.size();
-    //if (AzMaps.size()) {
-    //  qDebug() << "Width: " << AzMaps[0].width();
-    //  qDebug() << "Height: " << AzMaps[0].height();
-    //}
-  }
-}
-
 void RadioWindow::setComboBoxItemEnabled(QComboBox * comboBox,
                                          int index,
                                          bool enabled)
@@ -1101,7 +961,9 @@ void RadioWindow::createGraphicsView()
   GraphicsView->setWindowFlags(Qt::FramelessWindowHint);
   GraphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
   GraphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-  GraphicsView->setRenderHints(QPainter::Antialiasing|QPainter::TextAntialiasing|QPainter::SmoothPixmapTransform);
+  GraphicsView->setRenderHints( QPainter::Antialiasing
+                               |QPainter::TextAntialiasing
+                               |QPainter::SmoothPixmapTransform);
   //GraphicsView->setCacheMode(QGraphicsView::CacheBackground);
   //GraphicsView->setSizePolicy(QSizePolicy::Ignored,QSizePolicy::Ignored);
   //GraphicsView->setGeometry(QRect(0, 0, 400, 400));
@@ -1109,28 +971,100 @@ void RadioWindow::createGraphicsView()
 
   layout->addWidget(GraphicsView);
 
-  GraphicsScene = new QGraphicsScene(QRectF(0,0,kGraphicsSceneWidth,kGraphicsSceneHeight), GraphicsView);
-  GraphicsView->setScene(GraphicsScene);
+  GraphicsScene = new QGraphicsScene(QRectF(0,
+                                            0,
+                                            kGraphicsSceneWidth,
+                                            kGraphicsSceneHeight),
+                                     GraphicsView);
 
+  GraphicsView->setScene(GraphicsScene);
 }
 
 void RadioWindow::createGraphicsLegend()
 {
-  QImage image(kMapWidth, kMapHeight, QImage::Format_ARGB32);
+  // render oversized and scale down
+  float expand = 20.0;
+  float scale = 8.0;
+  QImage image((kMapWidth+expand)*scale, (kMapHeight+expand)*scale, QImage::Format_ARGB32);
   image.fill(Qt::transparent);
   QPainter p(&image);
-  p.setRenderHints( QPainter::Antialiasing );
-  p.setBrush( Qt::black );
-  p.setPen( Qt::black);
-  p.drawEllipse(100,100,kMapWidth-200,kMapHeight-200);
+  p.setRenderHint(QPainter::Antialiasing);
+  p.setRenderHint(QPainter::SmoothPixmapTransform);
+  p.setFont(QFont(QGuiApplication::font().family(),
+                  //(kGraphicsFontSize/3)*scale,
+                  kGraphicsFontSize*scale,
+                  QFont::Normal,
+                  QFont::StyleNormal));
+  p.setBrush( Qt::NoBrush );
+  p.setPen(QColor(0,0,0,255)); //30,30,30,40
+  p.drawEllipse(image.width()/2.0 - (kMapWidth/8.0)*scale,
+                image.height()/2.0 - (kMapHeight/8.0)*scale,
+                (kMapWidth/4.0)*scale,
+                (kMapHeight/4.0)*scale);
+  p.drawEllipse(image.width()/2.0 - (kMapWidth/4.0)*scale,
+                image.height()/2.0 - (kMapHeight/4.0)*scale,
+                (kMapWidth/2.0)*scale,
+                (kMapHeight/2.0)*scale);
+  p.drawEllipse(image.width()/2.0 - (kMapWidth*3/8)*scale,
+                image.height()/2.0 - (kMapHeight*3/8)*scale,
+                (kMapWidth*3/4)*scale,
+                (kMapHeight*3/4)*scale);
+  p.drawEllipse(image.width()/2.0 - (kMapWidth/2.0)*scale,
+                image.height()/2.0 - (kMapHeight/2.0)*scale,
+                (kMapWidth)*scale,
+                (kMapHeight)*scale);
+  p.drawEllipse(image.width()/2.0 - (kMapWidth/2.0 + 2.0)*scale,
+                image.height()/2.0 - (kMapHeight/2.0 + 2.0)*scale,
+                (kMapWidth + 4.0)*scale,
+                (kMapHeight + 4.0)*scale);
+
+  for (int i = 0; i< 360; ++i) {
+    p.setPen(QColor(0,0,0,255)); //30,30,30,40
+    if (i%30 == 0) { // 4-seg line
+      float x1 = (kMapWidth/20.0 * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y1 = (kMapHeight/20.0 * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      float x2 = (kMapWidth/2.0 * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y2 = (kMapHeight/2.0 * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      p.drawLine(x1,y1,x2,y2);
+
+    } else if (i%10 == 0) { // 3-seg line, labels
+      p.setPen(QColor(0,0,0,255));
+      float x1 = ((kMapWidth/8.0) * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y1 = ((kMapHeight/8.0) * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      float x2 = (kMapWidth/2.0 * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y2 = (kMapHeight/2.0 * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      p.drawLine(x1,y1,x2,y2);
+
+    } else if (i%5 == 0) { // 2-seg line
+      p.setPen(QColor(0,0,0,255));
+      float x1 = ((kMapWidth/4.0) * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y1 = ((kMapHeight/4.0) * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      float x2 = (kMapWidth/2.0 * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+      float y2 = (kMapHeight/2.0 * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+      p.drawLine(x1,y1,x2,y2);
+
+    }
+    // ticks
+    p.setPen(QColor(0,0,0,255));
+    float x1 = ((kMapWidth/2.0) * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+    float y1 = ((kMapHeight/2.0) * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+    float x2 = ((kMapWidth/2.0+2.0) * cos(qDegreesToRadians(double(i))))*scale + image.width()/2.0;
+    float y2 = ((kMapHeight/2.0+2.0) * sin(qDegreesToRadians(double(i))))*scale + image.height()/2.0;
+    p.drawLine(x1,y1,x2,y2);
+  }
+
   p.end();
-  QPixmap *legend = new QPixmap();
-  legend->fromImage(image);
-  *legend = legend->copy(0,0,kMapWidth,kMapHeight);
+  image.save("/home/eric/.config/softrx-client/grid.png");
+  image = image.scaled(image.width()/scale,
+                       image.height()/scale,
+                       Qt::KeepAspectRatio,
+                       Qt::SmoothTransformation);
+
+  QPixmap *legend = new QPixmap(QPixmap::fromImage(image));
   GraphicsLegend = GraphicsScene->addPixmap(*legend);
-  GraphicsLegend->setZValue(500);
-  GraphicsLegend->setPos((kGraphicsSceneWidth-kMapWidth)/2,
-                           (kGraphicsSceneHeight-kMapHeight)/2 );
+  GraphicsLegend->setZValue(15);
+  GraphicsLegend->setPos((kGraphicsSceneWidth-kMapWidth)/2 -10,
+                           (kGraphicsSceneHeight-kMapHeight)/2 -10);
 
 }
 
@@ -1145,13 +1079,32 @@ void RadioWindow::updateGraphicsPixmap()
     if (mapZoom >= AzMaps.size()) {
       mapZoom = AzMaps.size()-1;
     }
-    GraphicsPixmap = GraphicsScene->addPixmap(*AzMaps[mapZoom]);
+    GraphicsPixmap = GraphicsScene->addPixmap(AzMaps[mapZoom]);
     GraphicsPixmap->setZValue(0);
     GraphicsPixmap->setPos((kGraphicsSceneWidth-kMapWidth)/2,
                            (kGraphicsSceneHeight-kMapHeight)/2 );
+
   }
 }
 
+void RadioWindow::updateNightGraphicsPixmap()
+{
+  if (NightGraphicsPixmap != nullptr) {
+    GraphicsScene->removeItem(NightGraphicsPixmap);
+    delete NightGraphicsPixmap;
+    NightGraphicsPixmap = nullptr;
+  }
+  if (settings->value(s_nightshading, s_nightshading_def).toBool() ) {
+    if (AzMaps.size() > mapZoom) {
+      if (nightAzMaps.size() > mapZoom) {
+        NightGraphicsPixmap = GraphicsScene->addPixmap(nightAzMaps[mapZoom]);
+        NightGraphicsPixmap->setZValue(5);
+        NightGraphicsPixmap->setPos((kGraphicsSceneWidth-kMapWidth)/2,
+                               (kGraphicsSceneHeight-kMapHeight)/2 );
+      }
+    }
+  }
+}
 
 void RadioWindow::updateGraphicsEllipse(int start, int stop, int state)
 {
@@ -1177,13 +1130,15 @@ void RadioWindow::updateGraphicsEllipse(int start, int stop, int state)
   } else {
     brushColor = QColor(0, 0, 0, 40);
   }
-  QGraphicsEllipseItem *ellipseitem = GraphicsScene->addEllipse(rect, Qt::NoPen, QBrush(brushColor));
+  QGraphicsEllipseItem *ellipseitem = GraphicsScene->addEllipse(rect,
+                                                                Qt::NoPen,
+                                                                QBrush(brushColor));
   GraphicsEllipses << ellipseitem;
   ellipseitem->setStartAngle(stop*16);
   ellipseitem->setSpanAngle(span*16);
-  ellipseitem->setZValue(5);
+  ellipseitem->setZValue(10);
   ellipseitem->setPos( ((kGraphicsSceneWidth-kMapWidth)/2)+(kGraphicsEllipseShrink/2),
-                                            ((kGraphicsSceneHeight-kMapHeight)/2)+(kGraphicsEllipseShrink/2) );
+                       ((kGraphicsSceneHeight-kMapHeight)/2)+(kGraphicsEllipseShrink/2) );
 
 }
 
@@ -1202,7 +1157,7 @@ void RadioWindow::addGraphicsLine(int angle)
     QPen pen(QColor(50,50,50,80), 1, Qt::SolidLine);
     QGraphicsLineItem *lineitem = GraphicsScene->addLine(line, pen);
     GraphicsLines << lineitem;
-    lineitem->setZValue(10);
+    lineitem->setZValue(20);
   }
 }
 
@@ -1210,11 +1165,21 @@ void RadioWindow::addGraphicsLine(int angle)
 void RadioWindow::addGraphicsLabel(int angle, QString label, int state)
 {
   if (GraphicsScene != nullptr) {
+
+    int margin;
+    if (angle > 335 || angle < 25 || (angle > 155 && angle < 205)) {
+      margin = kMapWidth / 15; // smaller margin on top and bottom
+    } else {
+      margin = kGraphicsLabelMargin;
+    }
+
     angle = (angle - 90) % 360; // transform to Qt angles
 
     // translate angle to position, given compass radius of ~175
-    double x = ((kMapWidth/2)+kGraphicsLabelMargin) * qCos(qDegreesToRadians(double(angle))) + (kGraphicsSceneWidth/2);
-    double y = ((kMapHeight/2)+kGraphicsLabelMargin) * qSin(qDegreesToRadians(double(angle))) + (kGraphicsSceneHeight/2);
+    double x = ((kMapWidth/2)+margin) * qCos(qDegreesToRadians(double(angle)))
+                    + (kGraphicsSceneWidth/2);
+    double y = ((kMapHeight/2)+margin) * qSin(qDegreesToRadians(double(angle)))
+                    + (kGraphicsSceneHeight/2);
 
     label.replace(" ", "\r");
     QFont font(QGuiApplication::font().family(),
@@ -1323,6 +1288,7 @@ void RadioWindow::zoomChangedMouse(int step)
   if (mapZoom > AzMaps.size()-1) mapZoom = AzMaps.size()-1;
   //qDebug() << "zoomChangedMouse " << mapZoom;
   updateGraphicsPixmap();
+  updateNightGraphicsPixmap();
 }
 
 void RadioWindow::bearingChangedMouse(int x, int y)
@@ -1342,262 +1308,20 @@ void RadioWindow::bearingChangedMouse(int x, int y)
   }
 }
 
-// validators
-bool RadioWindow::isValidAngle(int value) {
-
-  if (value >= 0 && value < 360) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-
-
-// locator2longlat and qrb adapted from hamlib src/locator.c
-
-/**
- * \brief Convert Maidenhead grid locator to Longitude/Latitude
- * \param longitude	Pointer for the calculated Longitude
- * \param latitude	Pointer for the calculated Latitude
- * \param locator	The Maidenhead grid locator--2 through 12 char + nul string
- *
- *  Convert Maidenhead grid locator to Longitude/Latitude (decimal degrees).
- *  The locator should be in 2 through 12 chars long format.
- *  \a locator2longlat is case insensitive, however it checks for
- *  locator validity.
- *
- *  Decimal long/lat is computed to center of grid square, i.e. given
- *  EM19 will return coordinates equivalent to the southwest corner
- *  of EM19mm.
- *
- * \retval -RIG_EINVAL if locator exceeds RR99xx99xx99 or exceeds length
- *  limit--currently 1 to 6 lon/lat pairs.
- * \retval RIG_OK if conversion went OK.
- *
- * \bug The fifth pair ranges from aa to xx, there is another convention
- *  that ranges from aa to yy.  At some point both conventions should be
- *  supported.
- *
- * \sa longlat2locator()
- */
-bool RadioWindow::locator2longlat(double *longitude, double *latitude, const char *locator) {
-	int x_or_y, paircount;
-	int locvalue, pair;
-	int divisions;
-	double xy[2], ordinate;
-
-	/* bail if NULL pointers passed */
-	if (!longitude || !latitude)
-		return false;
-
-	paircount = strlen(locator) / 2;
-
-	/* verify paircount is within limits */
-	if (paircount > MAX_LOCATOR_PAIRS)
-		paircount = MAX_LOCATOR_PAIRS;
-	else if (paircount < MIN_LOCATOR_PAIRS)
-		return false;
-
-	/* For x(=longitude) and y(=latitude) */
-	for (x_or_y = 0;  x_or_y < 2;  ++x_or_y) {
-		ordinate = -90.0;
-		divisions = 1;
-
-		for (pair = 0;  pair < paircount;  ++pair) {
-			locvalue = locator[pair*2 + x_or_y];
-
-			/* Value of digit or letter */
-			locvalue -= (loc_char_range[pair] == 10) ? '0' :
-				(isupper(locvalue)) ? 'A' : 'a';
-
-			/* Check range for non-letter/digit or out of range */
-			if ((locvalue < 0) || (locvalue >= loc_char_range[pair]))
-				return false;
-
-			divisions *= loc_char_range[pair];
-			ordinate += locvalue * 180.0 / divisions;
-		}
-		/* Center ordinate in the Maidenhead "square" or "subsquare" */
-		ordinate += 90.0 / divisions;
-
-		xy[x_or_y] = ordinate;
-	}
-
-	*longitude = xy[0] * 2.0;
-	*latitude = xy[1];
-
-	return true;
-}
-
-/**
- * \brief Calculate the distance and bearing between two points.
- * \param lon1		The local Longitude, decimal degrees
- * \param lat1		The local Latitude, decimal degrees
- * \param lon2		The remote Longitude, decimal degrees
- * \param lat2		The remote Latitude, decimal degrees
- * \param distance	Pointer for the distance, km
- * \param azimuth	Pointer for the bearing, decimal degrees
- *
- *  Calculate the QRB between \a lon1, \a lat1 and \a lon2, \a lat2.
- *
- *	This version will calculate the QRB to a precision sufficient
- *	for 12 character locators.  Antipodal points, which are easily
- *	calculated, are considered equidistant and the bearing is
- *	simply resolved to be true north (0.0°).
- *
- * \retval -RIG_EINVAL if NULL pointer passed or lat and lon values
- * exceed -90 to 90 or -180 to 180.
- * \retval RIG_OK if calculations are successful.
- *
- * \return The distance in kilometers and azimuth in decimal degrees
- *  for the short path are stored in \a distance and \a azimuth.
- *
- * \sa distance_long_path(), azimuth_long_path()
- */
-
-bool RadioWindow::qrb(double lon1, double lat1, double lon2, double lat2, double *distance, double *azimuth) {
-	double delta_long, tmp, arc, az;
-
-	/* bail if NULL pointers passed */
-	if (!distance || !azimuth)
-		return false;
-
-	if ((lat1 > 90.0 || lat1 < -90.0) || (lat2 > 90.0 || lat2 < -90.0))
-		return false;
-
-	if ((lon1 > 180.0 || lon1 < -180.0) || (lon2 > 180.0 || lon2 < -180.0))
-		return false;
-
-	/* Prevent ACOS() Domain Error */
-	if (lat1 == 90.0)
-		lat1 = 89.999999999;
-	else if (lat1 == -90.0)
-		lat1 = -89.999999999;
-
-	if (lat2 == 90.0)
-		lat2 = 89.999999999;
-	else if (lat2 == -90.0)
-		lat2 = -89.999999999;
-
-	/* Convert variables to Radians */
-	lat1	/= RADIAN;
-	lon1	/= RADIAN;
-	lat2	/= RADIAN;
-	lon2	/= RADIAN;
-
-	delta_long = lon2 - lon1;
-
-	tmp = sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(delta_long);
-
-	if (tmp > .999999999999999) {
-		/* Station points coincide, use an Omni! */
-		*distance = 0.0;
-		*azimuth = 0.0;
-		return true;
-	}
-
-	if (tmp < -.999999) {
-		/*
-		 * points are antipodal, it's straight down.
-		 * Station is equal distance in all Azimuths.
-		 * So take 180 Degrees of arc times 60 nm,
-		 * and you get 10800 nm, or whatever units...
-		 */
-		*distance = 180.0 * ARC_IN_KM;
-		*azimuth = 0.0;
-		return true;
-	}
-
-	arc = acos(tmp);
-
-	/*
-	 * One degree of arc is 60 Nautical miles
-	 * at the surface of the earth, 111.2 km, or 69.1 sm
-	 * This method is easier than the one in the handbook
-	 */
-
-
-	*distance = ARC_IN_KM * RADIAN * arc;
-
-	/* Short Path */
-	/* Change to azimuth computation by Dave Freese, W1HKJ */
-
-	az = RADIAN * atan2(sin(lon2 - lon1) * cos(lat2),
-			    (cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(lon2 - lon1)));
-
-	az = fmod(360.0 + az, 360.0);
-	if (az < 0.0)
-		az += 360.0;
-	else if (az >= 360.0)
-		az -= 360.0;
-
-	//*azimuth = floor(az + 0.5);
-  *azimuth = az;
-	return true;
-}
-
-
-// projection conversion functions
-// all angles and lat/long in radians
-bool RadioWindow::distAz2LongLat(const double distance, const double azimuth,
-                                const double long1, const double lat1,
-                                double &long2, double &lat2)
+void RadioWindow::loadMaps(QList<QPixmap> maps)
 {
-  if (distance > ARC_IN_KM * 180 || distance < 0) return false;
-  if (azimuth < 0 || azimuth >= TWO_PI) return false;
-  if (long1 < -M_PI || long1 > M_PI) return false;
-  if (lat1 < -M_PI_2  || lat1 > M_PI_2 ) return false;
+  //qDebug() << "loadMaps(main): Maps ready " << maps.size();
+  AzMaps.clear();
+  AzMaps = maps;
+  updateGraphicsPixmap();
 
-  auto angularDistance = distance / EARTH_RADIUS;
-  lat2 = asin( sin(lat1)*cos(angularDistance)
-                    + cos(lat1)*sin(angularDistance)*cos(azimuth) );
-
-  auto long2tmp = long1 + atan2(sin(azimuth)*sin(angularDistance)*cos(lat1),
-                             cos(angularDistance)-sin(lat1)*sin(lat2) );
-  long2tmp = fmod((long2tmp + 3.0 * M_PI), TWO_PI) - M_PI; // normalize to range -M_PI to +M_PI
-  long2 = long2tmp;
-
-  return true;
+  emit generateNightMaps();
 }
 
-// translate equirectangular (Plate Carree) projection pixels to lat,long
-bool RadioWindow::pixelRect2longlat(const int x, const int y,
-                                   const int sizeX, const int sizeY,
-                                   double &longitude, double &latitude)
+void RadioWindow::loadNightMaps(QList<QPixmap> maps)
 {
-  if (x < 0 || x > sizeX) return false;
-  if (y < 0 || y > sizeY) return false;
-
-  longitude = (x - sizeX / 2.0) * (TWO_PI / sizeX);
-  latitude = (y - sizeY / 2.0) * (-M_PI / sizeY);
-  return true;
-}
-
-bool RadioWindow::longlat2PixelRect(const double longitude, const double latitude,
-                                   const int sizeX, const int sizeY,
-                                   int &x, int &y)
-{
-  if (longitude < -M_PI || longitude > M_PI) return false;
-  if (latitude < -M_PI_2 || latitude > M_PI_2) return false;
-
-  x = (longitude * sizeX / TWO_PI) + (sizeX / 2.0);
-  y = (sizeY / 2.0) - (latitude * sizeY / M_PI);
-  return true;
-}
-
-bool RadioWindow::pixelAz2DistAz(const int x, const int y,
-                                 const int sizeXY, const int kmRadius,
-                                 double &distance, double &azimuth)
-{
-  if (x < 0 || x >= sizeXY) return false;
-  if (y < 0 || y >= sizeXY) return false;
-
-  auto xx = double(x) - (sizeXY/2.0); /// shift axis
-  auto yy = double(y) - (sizeXY/2.0); // shift axis
-  auto angle = std::atan2(xx, -yy);
-  if (angle < 0.0 ) angle += TWO_PI;
-  azimuth = angle;
-  distance = sqrt(xx*xx + yy*yy) * (kmRadius * 2.0 / sizeXY);
-  return true;
+  //qDebug() << "loadNightMaps(main): Night maps ready " << maps.size();
+  nightAzMaps.clear();
+  nightAzMaps = maps;
+  updateNightGraphicsPixmap();
 }

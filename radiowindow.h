@@ -1,19 +1,12 @@
+#ifndef RADIOWINDOW_H
+#define RADIOWINDOW_H
 #pragma once
 
 #include "defines.h"
 #include "ui_radio.h"
 #include "ui_settingsdialog.h"
 #include "settingsdialog.h"
-
-// locator2longlat
-const static int loc_char_range[] = { 18, 10, 24, 10, 24, 10 };
-#define MAX_LOCATOR_PAIRS       6
-#define MIN_LOCATOR_PAIRS       1
-// qrb
-#define RADIAN  (180.0 / M_PI)
-/* arc length for 1 degree, 60 Nautical Miles */
-#define ARC_IN_KM 111.2
-#define EARTH_RADIUS 6371
+#include "mapclass.hpp"
 
 struct AntennaButton {
   QPushButton *button;
@@ -21,6 +14,7 @@ struct AntennaButton {
   int antenna;
   AntennaButton(QPushButton *b, QString l, int a) : button(b), label(l), antenna(a) {};
 };
+
 
 class CustomGraphicsView : public QGraphicsView
 {
@@ -63,9 +57,6 @@ signals:
     void mousePressLeft(int, int);
 };
 
-
-class SettingsDialog;
-
 class RadioWindow : public QWidget, public Ui::RadioWindow
 {
 Q_OBJECT
@@ -76,6 +67,8 @@ public:
 
 signals:
   void closed();
+  void generateNightMaps();
+  void generateMaps();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
@@ -85,20 +78,24 @@ private slots:
 private:
   QSettings *settings;
   SettingsDialog *settingsdialog;
-  QList<QPixmap*> AzMaps;
+  QList<QPixmap> AzMaps;
+  QList<QPixmap> nightAzMaps;
   int radioNr;
   QString radioNrStr;
   int mapZoom;
   int currentBearing;
   QPalette defaultPalette;
+  QTimer *timer;
 
-  void loadMaps();
   void connectionLED(bool);
   void setPalette();
 
   void connectSignals();
   void openSettingsDialog();
   void settingsUpdated();
+  void updateMapImages();
+  void updateNightMapImages();
+  void toggleNightMapImage();
   void cbBandChanged();
   void cbGroupChanged();
   void toggleAntennaLock();
@@ -128,18 +125,22 @@ private:
   QGridLayout *gridLayout;
   CustomGraphicsView *GraphicsView;
   QGraphicsScene *GraphicsScene;
-  //QGraphicsEllipseItem *GraphicsEllipse;
   QList<QGraphicsItem*> GraphicsEllipses;
   QGraphicsPixmapItem *GraphicsPixmap;
+  QGraphicsPixmapItem *NightGraphicsPixmap;
   QList<AntennaButton> antennaButtons;
   QGraphicsPixmapItem *GraphicsLegend;
 
   void createGraphicsView();
   void updateGraphicsEllipse(int, int, int);
   void updateGraphicsPixmap();
+  void updateNightGraphicsPixmap();
   void addGraphicsLine(int);
   void addGraphicsLabel(int, QString, int);
   void createGraphicsLegend();
+  void loadMaps(QList<QPixmap>);
+  void loadNightMaps(QList<QPixmap>);
+  void timerTimeout();
 
   void createButtons();
   void antennaButtonClicked(int);
@@ -150,14 +151,6 @@ private:
   void zoomOut();
   void bearingChangedMouse(int,int);
   void cleanup();
-  bool isValidAngle(int);
-  bool locator2longlat(double*,double*,const char*);
-  bool qrb(double,double,double,double,double*,double*);
-
-  bool pixelRect2longlat(const int,const int,const int,const int,double&,double&);
-  bool pixelAz2DistAz(const int,const int,const int,const int,double&,double&);
-  bool distAz2LongLat(const double,const double,const double,const double,double&,double&);
-  bool longlat2PixelRect(const double,const double,const int,const int,int&,int&);
 
   int kMapWidth;
   int kMapHeight;
@@ -167,4 +160,10 @@ private:
   int kGraphicsLineLength;
   int kGraphicsLabelMargin;
   int kGraphicsFontSize;
+
+  QThread *mapThread;
+  MapClass *mapHandler;
+
 };
+
+#endif

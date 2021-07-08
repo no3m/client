@@ -1,3 +1,5 @@
+#ifndef SETTINGSDIALOG_H
+#define SETTINGSDIALOG_H
 #pragma once
 
 #include "defines.h"
@@ -13,16 +15,21 @@ public:
 
 signals:
     void settingsUpdated();
+    void updateMapImages();
+    void webSocketReconnect();
+    void toggleNightMapImage();
+    void updateNightMapImages();
 
 private:
     QSettings& settings;
-    //QFileDialog *directoryDialog;
     QColor mapShadeColor;
 
     void loadSettings();
     void acceptChanges();
     void rejectChanges();
-    void openDirectoryDialog();
+    void browseFileDialog();
     void setMapShadeColor();
 
 };
+
+#endif

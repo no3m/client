@@ -14,10 +14,10 @@ EQ            = =
 
 CC            = gcc
 CXX           = g++
-DEFINES       = -DQT_NO_DEBUG -DQT_WIDGETS_LIB -DQT_PDF_LIB -DQT_GUI_LIB -DQT_WEBSOCKETS_LIB -DQT_NETWORK_LIB -DQT_CORE_LIB
+DEFINES       = -DQT_NO_DEBUG -DQT_WIDGETS_LIB -DQT_GUI_LIB -DQT_WEBSOCKETS_LIB -DQT_NETWORK_LIB -DQT_CORE_LIB
 CFLAGS        = -pipe -O2 -Wall -Wextra -D_REENTRANT -fPIC $(DEFINES)
-CXXFLAGS      = -pipe -O2 -Wall -Wextra -D_REENTRANT -fPIC $(DEFINES)
-INCPATH       = -I. -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtPdf -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I. -I. -I/usr/lib/qt/mkspecs/linux-g++
+CXXFLAGS      = -pipe -O3 -fno-math-errno -Wall -Wextra -D_REENTRANT -fPIC $(DEFINES)
+INCPATH       = -I. -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I. -I. -I/usr/lib/qt/mkspecs/linux-g++
 QMAKE         = /usr/bin/qmake
 DEL_FILE      = rm -f
 CHK_DIR_EXISTS= test -d
@@ -40,7 +40,7 @@ DISTNAME      = softrx-client1.0.0
 DISTDIR = /home/eric/Public/Downloads/amateur/software/softrx/client/.tmp/softrx-client1.0.0
 LINK          = g++
 LFLAGS        = -Wl,-O1
-LIBS          = $(SUBLIBS) /usr/lib/libQt5Widgets.so /usr/lib/libQt5Pdf.so /usr/lib/libQt5Gui.so /usr/lib/libQt5WebSockets.so /usr/lib/libQt5Network.so /usr/lib/libQt5Core.so -lGL -lpthread   
+LIBS          = $(SUBLIBS) /usr/lib/libQt5Widgets.so /usr/lib/libQt5Gui.so /usr/lib/libQt5WebSockets.so /usr/lib/libQt5Network.so /usr/lib/libQt5Core.so -lGL -lpthread   
 AR            = ar cqs
 RANLIB        = 
 SED           = sed
@@ -54,13 +54,19 @@ OBJECTS_DIR   = ./
 
 SOURCES       = main.cpp \
 		radiowindow.cpp \
-		settingsdialog.cpp moc_radiowindow.cpp \
-		moc_settingsdialog.cpp
+		settingsdialog.cpp \
+		mapclass.cpp \
+		helpers.cpp moc_radiowindow.cpp \
+		moc_settingsdialog.cpp \
+		moc_mapclass.cpp
 OBJECTS       = main.o \
 		radiowindow.o \
 		settingsdialog.o \
+		mapclass.o \
+		helpers.o \
 		moc_radiowindow.o \
-		moc_settingsdialog.o
+		moc_settingsdialog.o \
+		moc_mapclass.o
 DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		/usr/lib/qt/mkspecs/common/unix.conf \
 		/usr/lib/qt/mkspecs/common/linux.conf \
@@ -325,10 +331,15 @@ DIST          = /usr/lib/qt/mkspecs/features/spec_pre.prf \
 		/usr/lib/qt/mkspecs/features/yacc.prf \
 		/usr/lib/qt/mkspecs/features/lex.prf \
 		softrx.pro defines.h \
+		helpers.hpp \
 		radiowindow.h \
-		settingsdialog.h main.cpp \
+		settingsdialog.h \
+		vector3.hpp \
+		mapclass.hpp main.cpp \
 		radiowindow.cpp \
-		settingsdialog.cpp
+		settingsdialog.cpp \
+		mapclass.cpp \
+		helpers.cpp
 QMAKE_TARGET  = softrx-client
 DESTDIR       = 
 TARGET        = softrx-client
@@ -884,8 +895,8 @@ distdir: FORCE
 	@test -d $(DISTDIR) || mkdir -p $(DISTDIR)
 	$(COPY_FILE) --parents $(DIST) $(DISTDIR)/
 	$(COPY_FILE) --parents /usr/lib/qt/mkspecs/features/data/dummy.cpp $(DISTDIR)/
-	$(COPY_FILE) --parents defines.h radiowindow.h settingsdialog.h $(DISTDIR)/
-	$(COPY_FILE) --parents main.cpp radiowindow.cpp settingsdialog.cpp $(DISTDIR)/
+	$(COPY_FILE) --parents defines.h helpers.hpp radiowindow.h settingsdialog.h vector3.hpp mapclass.hpp $(DISTDIR)/
+	$(COPY_FILE) --parents main.cpp radiowindow.cpp settingsdialog.cpp mapclass.cpp helpers.cpp $(DISTDIR)/
 	$(COPY_FILE) --parents radio.ui settingsdialog.ui $(DISTDIR)/
 
 
@@ -915,26 +926,37 @@ compiler_moc_predefs_make_all: moc_predefs.h
 compiler_moc_predefs_clean:
 	-$(DEL_FILE) moc_predefs.h
 moc_predefs.h: /usr/lib/qt/mkspecs/features/data/dummy.cpp
-	g++ -pipe -O2 -Wall -Wextra -dM -E -o moc_predefs.h /usr/lib/qt/mkspecs/features/data/dummy.cpp
+	g++ -pipe -O3 -fno-math-errno -Wall -Wextra -dM -E -o moc_predefs.h /usr/lib/qt/mkspecs/features/data/dummy.cpp
 
-compiler_moc_header_make_all: moc_radiowindow.cpp moc_settingsdialog.cpp
+compiler_moc_header_make_all: moc_radiowindow.cpp moc_settingsdialog.cpp moc_mapclass.cpp
 compiler_moc_header_clean:
-	-$(DEL_FILE) moc_radiowindow.cpp moc_settingsdialog.cpp
+	-$(DEL_FILE) moc_radiowindow.cpp moc_settingsdialog.cpp moc_mapclass.cpp
 moc_radiowindow.cpp: radiowindow.h \
 		defines.h \
 		ui_radio.h \
 		ui_settingsdialog.h \
 		settingsdialog.h \
+		mapclass.hpp \
+		vector3.hpp \
+		helpers.hpp \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/eric/Public/Downloads/amateur/software/softrx/client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/eric/Public/Downloads/amateur/software/softrx/client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtPdf -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include radiowindow.h -o moc_radiowindow.cpp
+	/usr/bin/moc $(DEFINES) --include /home/eric/Public/Downloads/amateur/software/softrx/client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/eric/Public/Downloads/amateur/software/softrx/client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include radiowindow.h -o moc_radiowindow.cpp
 
 moc_settingsdialog.cpp: settingsdialog.h \
 		defines.h \
 		ui_settingsdialog.h \
 		moc_predefs.h \
 		/usr/bin/moc
-	/usr/bin/moc $(DEFINES) --include /home/eric/Public/Downloads/amateur/software/softrx/client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/eric/Public/Downloads/amateur/software/softrx/client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtPdf -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include settingsdialog.h -o moc_settingsdialog.cpp
+	/usr/bin/moc $(DEFINES) --include /home/eric/Public/Downloads/amateur/software/softrx/client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/eric/Public/Downloads/amateur/software/softrx/client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include settingsdialog.h -o moc_settingsdialog.cpp
+
+moc_mapclass.cpp: mapclass.hpp \
+		defines.h \
+		vector3.hpp \
+		helpers.hpp \
+		moc_predefs.h \
+		/usr/bin/moc
+	/usr/bin/moc $(DEFINES) --include /home/eric/Public/Downloads/amateur/software/softrx/client/moc_predefs.h -I/usr/lib/qt/mkspecs/linux-g++ -I/home/eric/Public/Downloads/amateur/software/softrx/client -I/usr/include/qt -I/usr/include/qt/QtWidgets -I/usr/include/qt/QtGui -I/usr/include/qt/QtWebSockets -I/usr/include/qt/QtNetwork -I/usr/include/qt/QtCore -I/usr/include/c++/10.2.0 -I/usr/include/c++/10.2.0/x86_64-pc-linux-gnu -I/usr/include/c++/10.2.0/backward -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include -I/usr/local/include -I/usr/lib/gcc/x86_64-pc-linux-gnu/10.2.0/include-fixed -I/usr/include mapclass.hpp -o moc_mapclass.cpp
 
 compiler_moc_objc_header_make_all:
 compiler_moc_objc_header_clean:
@@ -965,14 +987,20 @@ main.o: main.cpp radiowindow.h \
 		defines.h \
 		ui_radio.h \
 		ui_settingsdialog.h \
-		settingsdialog.h
+		settingsdialog.h \
+		mapclass.hpp \
+		vector3.hpp \
+		helpers.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o main.o main.cpp
 
 radiowindow.o: radiowindow.cpp radiowindow.h \
 		defines.h \
 		ui_radio.h \
 		ui_settingsdialog.h \
-		settingsdialog.h
+		settingsdialog.h \
+		mapclass.hpp \
+		vector3.hpp \
+		helpers.hpp
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o radiowindow.o radiowindow.cpp
 
 settingsdialog.o: settingsdialog.cpp settingsdialog.h \
@@ -980,11 +1008,24 @@ settingsdialog.o: settingsdialog.cpp settingsdialog.h \
 		ui_settingsdialog.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o settingsdialog.o settingsdialog.cpp
 
+mapclass.o: mapclass.cpp mapclass.hpp \
+		defines.h \
+		vector3.hpp \
+		helpers.hpp
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o mapclass.o mapclass.cpp
+
+helpers.o: helpers.cpp helpers.hpp \
+		defines.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o helpers.o helpers.cpp
+
 moc_radiowindow.o: moc_radiowindow.cpp 
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o moc_radiowindow.o moc_radiowindow.cpp
 
 moc_settingsdialog.o: moc_settingsdialog.cpp 
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o moc_settingsdialog.o moc_settingsdialog.cpp
+
+moc_mapclass.o: moc_mapclass.cpp 
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o moc_mapclass.o moc_mapclass.cpp
 
 ####### Install
 

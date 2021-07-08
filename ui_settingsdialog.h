@@ -12,6 +12,7 @@
 #include <QtCore/QVariant>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
 #include <QtWidgets/QFrame>
@@ -51,12 +52,17 @@ public:
     QFrame *frame_3;
     QWidget *gridLayoutWidget_2;
     QGridLayout *gridLayout_10;
-    QLineEdit *mapDirectory;
+    QLabel *label_7;
+    QLabel *label_8;
     QLabel *label_43;
     QPushButton *pbBrowse;
+    QLineEdit *mapFile;
+    QLineEdit *gridLocator;
+    QLabel *label_9;
+    QCheckBox *cbNightShade;
+    QLabel *label_10;
+    QComboBox *cbNightTransparency;
     QLabel *label_184;
-    QLabel *label_185;
-    QLabel *label_45;
 
     void setupUi(QDialog *SettingsDialog)
     {
@@ -159,19 +165,25 @@ public:
         maps->setObjectName(QString::fromUtf8("maps"));
         frame_3 = new QFrame(maps);
         frame_3->setObjectName(QString::fromUtf8("frame_3"));
-        frame_3->setGeometry(QRect(5, 10, 361, 146));
+        frame_3->setGeometry(QRect(5, 10, 361, 179));
         frame_3->setFrameShape(QFrame::StyledPanel);
         frame_3->setFrameShadow(QFrame::Raised);
         gridLayoutWidget_2 = new QWidget(frame_3);
         gridLayoutWidget_2->setObjectName(QString::fromUtf8("gridLayoutWidget_2"));
-        gridLayoutWidget_2->setGeometry(QRect(5, 105, 351, 36));
+        gridLayoutWidget_2->setGeometry(QRect(6, 42, 351, 111));
         gridLayout_10 = new QGridLayout(gridLayoutWidget_2);
         gridLayout_10->setObjectName(QString::fromUtf8("gridLayout_10"));
         gridLayout_10->setContentsMargins(0, 0, 0, 0);
-        mapDirectory = new QLineEdit(gridLayoutWidget_2);
-        mapDirectory->setObjectName(QString::fromUtf8("mapDirectory"));
+        label_7 = new QLabel(gridLayoutWidget_2);
+        label_7->setObjectName(QString::fromUtf8("label_7"));
+        label_7->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
 
-        gridLayout_10->addWidget(mapDirectory, 0, 1, 1, 1);
+        gridLayout_10->addWidget(label_7, 1, 0, 1, 1);
+
+        label_8 = new QLabel(gridLayoutWidget_2);
+        label_8->setObjectName(QString::fromUtf8("label_8"));
+
+        gridLayout_10->addWidget(label_8, 1, 2, 1, 1);
 
         label_43 = new QLabel(gridLayoutWidget_2);
         label_43->setObjectName(QString::fromUtf8("label_43"));
@@ -192,23 +204,45 @@ public:
 
         gridLayout_10->addWidget(pbBrowse, 0, 2, 1, 1);
 
+        mapFile = new QLineEdit(gridLayoutWidget_2);
+        mapFile->setObjectName(QString::fromUtf8("mapFile"));
+
+        gridLayout_10->addWidget(mapFile, 0, 1, 1, 1);
+
+        gridLocator = new QLineEdit(gridLayoutWidget_2);
+        gridLocator->setObjectName(QString::fromUtf8("gridLocator"));
+
+        gridLayout_10->addWidget(gridLocator, 1, 1, 1, 1);
+
+        label_9 = new QLabel(gridLayoutWidget_2);
+        label_9->setObjectName(QString::fromUtf8("label_9"));
+        label_9->setAlignment(Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter);
+
+        gridLayout_10->addWidget(label_9, 2, 0, 1, 1);
+
+        cbNightShade = new QCheckBox(gridLayoutWidget_2);
+        cbNightShade->setObjectName(QString::fromUtf8("cbNightShade"));
+
+        gridLayout_10->addWidget(cbNightShade, 2, 1, 1, 1);
+
+        label_10 = new QLabel(gridLayoutWidget_2);
+        label_10->setObjectName(QString::fromUtf8("label_10"));
+
+        gridLayout_10->addWidget(label_10, 3, 0, 1, 1);
+
+        cbNightTransparency = new QComboBox(gridLayoutWidget_2);
+        cbNightTransparency->setObjectName(QString::fromUtf8("cbNightTransparency"));
+
+        gridLayout_10->addWidget(cbNightTransparency, 3, 1, 1, 1);
+
         label_184 = new QLabel(frame_3);
         label_184->setObjectName(QString::fromUtf8("label_184"));
-        label_184->setGeometry(QRect(65, 5, 261, 21));
+        label_184->setGeometry(QRect(65, 5, 261, 35));
         QFont font;
         font.setBold(true);
         font.setWeight(75);
         label_184->setFont(font);
         label_184->setAlignment(Qt::AlignCenter);
-        label_185 = new QLabel(frame_3);
-        label_185->setObjectName(QString::fromUtf8("label_185"));
-        label_185->setGeometry(QRect(95, 35, 191, 26));
-        label_185->setAlignment(Qt::AlignCenter);
-        label_185->setOpenExternalLinks(true);
-        label_45 = new QLabel(frame_3);
-        label_45->setObjectName(QString::fromUtf8("label_45"));
-        label_45->setGeometry(QRect(50, 70, 276, 26));
-        label_45->setAlignment(Qt::AlignCenter);
         tabWidget->addTab(maps, QString());
 
         retranslateUi(SettingsDialog);
@@ -235,11 +269,15 @@ public:
         label_6->setText(QCoreApplication::translate("SettingsDialog", "Dark Theme", nullptr));
         cbTheme->setText(QString());
         tabWidget->setTabText(tabWidget->indexOf(general), QCoreApplication::translate("SettingsDialog", "General", nullptr));
-        label_43->setText(QCoreApplication::translate("SettingsDialog", "Directory", nullptr));
+        label_7->setText(QCoreApplication::translate("SettingsDialog", "Center Grid", nullptr));
+        label_8->setText(QCoreApplication::translate("SettingsDialog", "eg. EN91WR", nullptr));
+        label_43->setText(QCoreApplication::translate("SettingsDialog", "Map File", nullptr));
         pbBrowse->setText(QCoreApplication::translate("SettingsDialog", "Browse", nullptr));
-        label_184->setText(QCoreApplication::translate("SettingsDialog", "Azimuthal Eqidistant Map Files", nullptr));
-        label_185->setText(QCoreApplication::translate("SettingsDialog", "<a href=\"https://ns6t.net/azimuth/\">https://ns6t.net/azimuth/</a>", nullptr));
-        label_45->setText(QCoreApplication::translate("SettingsDialog", "map1.png, map2.png, ... , mapN.png", nullptr));
+        label_9->setText(QCoreApplication::translate("SettingsDialog", "Night Shading", nullptr));
+        cbNightShade->setText(QString());
+        label_10->setText(QCoreApplication::translate("SettingsDialog", "Night Transparency", nullptr));
+        label_184->setText(QCoreApplication::translate("SettingsDialog", "Equirectangular Projection Map\n"
+"(Plate Carree)", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(maps), QCoreApplication::translate("SettingsDialog", "Maps", nullptr));
     } // retranslateUi
 
