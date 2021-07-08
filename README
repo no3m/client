@@ -1,1 +1,16 @@
 Receive Antenna Switching Client
+
+- Websockets to connect to server application
+- JSON data
+- Generate Equidistant Azimuthal projection center on lat,long (Maidenhead grid)
+- Map is zoomable
+- Source map is 2:1 aspect Equirectangular (Plate Carree) projection
+- Maps and night shading rendered in separate thread to avoid GUI blocking
+- Nighttime shading of map (greyline), updated in 5-min intervals
+- User selection of: band (in manual mode), group, antenna
+- Display modes: compass (with map) or List (buttons)
+- Features: scanning (w/ user defined delay), tracking, lock, swap antennas,
+  disabled scan (per antenna)
+- PTT (TX/RX) state indicator
+- separate UI files for desktop vs. small touchscreen (ie. Pi)
+- tested in Linux and Windows (mingw32 / GCC 8)
